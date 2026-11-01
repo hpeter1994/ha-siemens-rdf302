@@ -1,0 +1,12 @@
+# Scripts and logs for one specific installation (contain its network address)
+hardware_tests/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+.DS_Store
+.idea/
+.vscode/

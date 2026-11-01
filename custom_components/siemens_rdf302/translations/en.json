@@ -1,0 +1,286 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "This thermostat is already configured.",
+      "reconfigure_successful": "The connection settings were updated."
+    },
+    "error": {
+      "cannot_connect": "No answer from the thermostat. Check the host, port and Modbus address. The bridge must convert to Modbus TCP (on an Elfin EW11, Protocol = Modbus), and its serial settings must match the thermostat.",
+      "link_conflict": "This bridge is already in use with different link settings.",
+      "not_a_thermostat": "A device answered, but its operating mode register does not hold a value an RDF302 uses. Check the unit ID."
+    },
+    "step": {
+      "user": {
+        "title": "Connect to the thermostat",
+        "data": {
+          "host": "Bridge host",
+          "port": "Port",
+          "unit_id": "Modbus address (P81)",
+          "model": "Model",
+          "name": "Name"
+        }
+      },
+      "application": {
+        "title": "Select the application",
+        "description": "The thermostat does not report its application, which is normal if it was set with DIP switches. You can check it on the thermostat as d01 in the expert diagnostics level.",
+        "data": {
+          "application": "Application"
+        }
+      },
+      "reconfigure": {
+        "title": "Change the connection",
+        "data": {
+          "host": "Bridge host",
+          "port": "Port",
+          "unit_id": "Modbus address (P81)",
+          "model": "Model"
+        }
+      }
+    }
+  },
+  "selector": {
+    "model": {
+      "options": {
+        "rdf302": "RDF302",
+        "rdf302_vb": "RDF302/VB",
+        "rdf302_b": "RDF302.B (no X1 and X2 inputs)"
+      }
+    },
+    "application": {
+      "options": {
+        "two_pipe": "2-pipe, on/off",
+        "two_pipe_3pos": "2-pipe, 3-position",
+        "two_pipe_heater": "2-pipe with electric heater",
+        "four_pipe": "4-pipe"
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "input_contact": { "name": "{input} operating mode contact" },
+      "input_dew_point": { "name": "{input} dew point" },
+      "input_heater_enable": { "name": "{input} heater enable" },
+      "input_fault": { "name": "{input} fault" },
+      "input_monitor": { "name": "{input} monitor" }
+    },
+    "button": {
+      "sync_clock": { "name": "Sync clock" }
+    },
+    "number": {
+      "comfort_setpoint": { "name": "Comfort setpoint" },
+      "outside_temperature": { "name": "Outside temperature" },
+      "economy_heating_setpoint": { "name": "Economy heating setpoint (4.5 = off)" },
+      "economy_cooling_setpoint": { "name": "Economy cooling setpoint (40.5 = off)" },
+      "protection_heating_setpoint": { "name": "Protection heating setpoint (4.5 = off)" },
+      "protection_cooling_setpoint": { "name": "Protection cooling setpoint (40.5 = off)" },
+      "sensor_calibration": { "name": "Sensor calibration" },
+      "comfort_basic_setpoint": { "name": "Comfort basic setpoint" },
+      "setpoint_minimum": { "name": "Minimum Comfort setpoint" },
+      "setpoint_maximum": { "name": "Maximum Comfort setpoint" },
+      "differential_heating": { "name": "Heating differential" },
+      "differential_cooling": { "name": "Cooling differential" },
+      "dead_zone": { "name": "Dead zone" },
+      "setpoint_differential": { "name": "Setpoint differential" },
+      "integral_time": { "name": "Integral time" },
+      "changeover_cooling_point": { "name": "Changeover point for cooling" },
+      "changeover_heating_point": { "name": "Changeover point for heating" },
+      "actuator_run_time": { "name": "Actuator run time" },
+      "heater_load_current": { "name": "Heater load current" },
+      "minimum_on_time": { "name": "Minimum output on time" },
+      "minimum_off_time": { "name": "Minimum output off time" },
+      "purge_time": { "name": "Purge time" },
+      "floor_temperature_limit": { "name": "Floor temperature limit (9 = off)" },
+      "fan_overrun": { "name": "Fan overrun" },
+      "fan_point_high": { "name": "Fan high speed point" },
+      "fan_point_medium": { "name": "Fan medium speed point" },
+      "fan_point_low": { "name": "Fan low speed point" },
+      "fan_minimum_on_time": { "name": "Fan minimum on time" },
+      "fan_kick_comfort": { "name": "Fan kick in Comfort (90 = off)" },
+      "fan_kick_economy": { "name": "Fan kick in Economy (360 = off)" },
+      "filter_service_interval": { "name": "Filter service interval" }
+    },
+    "select": {
+      "key_lock": {
+        "name": "Key lock",
+        "state": {
+          "unlocked": "Unlocked",
+          "plus_minus": "Plus and minus buttons",
+          "fan": "Fan button",
+          "mode": "Operating mode button",
+          "all": "All buttons"
+        }
+      },
+      "control_sequence": {
+        "name": "Control sequence",
+        "state": {
+          "heating_only": "Heating only",
+          "cooling_only": "Cooling only",
+          "manual_changeover": "Manual changeover",
+          "auto_changeover": "Automatic changeover",
+          "heating_and_cooling": "Heating and cooling"
+        }
+      },
+      "mode_button_profile": {
+        "name": "Mode button profile (changing it forces Protection)",
+        "state": {
+          "comfort_protection": "Comfort, Protection",
+          "comfort_economy_protection": "Comfort, Economy, Protection"
+        }
+      },
+      "display_unit": {
+        "name": "Display unit",
+        "state": { "celsius": "°C", "fahrenheit": "°F" }
+      },
+      "standard_display": {
+        "name": "Standard display",
+        "state": {
+          "room_temperature": "Room temperature",
+          "setpoint": "Setpoint",
+          "bus_temperature": "Bus temperature"
+        }
+      },
+      "additional_display": {
+        "name": "Additional display",
+        "state": {
+          "none": "None",
+          "celsius_fahrenheit": "°C and °F",
+          "outside": "Outside temperature",
+          "time_12h": "Time (12 h)",
+          "time_24h": "Time (24 h)"
+        }
+      },
+      "local_key_lock": {
+        "name": "Local key lock",
+        "state": { "disabled": "Disabled", "auto": "Automatic", "manual": "Manual" }
+      },
+      "input_x1_action": {
+        "name": "X1 action",
+        "state": { "normally_open": "Normally open", "normally_closed": "Normally closed" }
+      },
+      "input_x2_action": {
+        "name": "X2 action",
+        "state": { "normally_open": "Normally open", "normally_closed": "Normally closed" }
+      },
+      "input_x1_function": {
+        "name": "X1 function",
+        "state": {
+          "not_used": "Not used",
+          "external_sensor": "External temperature sensor",
+          "changeover": "Heating/cooling changeover",
+          "mode_contact": "Operating mode contact",
+          "dew_point": "Dew point",
+          "heater_enable": "Electric heater enable",
+          "fault": "Fault",
+          "digital_monitor": "Digital monitor",
+          "temperature_monitor": "Temperature monitor"
+        }
+      },
+      "input_x2_function": {
+        "name": "X2 function",
+        "state": {
+          "not_used": "Not used",
+          "external_sensor": "External temperature sensor",
+          "changeover": "Heating/cooling changeover",
+          "mode_contact": "Operating mode contact",
+          "dew_point": "Dew point",
+          "heater_enable": "Electric heater enable",
+          "fault": "Fault",
+          "digital_monitor": "Digital monitor",
+          "temperature_monitor": "Temperature monitor"
+        }
+      },
+      "fan_control": {
+        "name": "Fan control",
+        "state": {
+          "disabled": "Disabled",
+          "enabled": "Enabled",
+          "heating_only": "Heating only",
+          "cooling_only": "Cooling only"
+        }
+      },
+      "fan_speeds": {
+        "name": "Fan speeds",
+        "state": { "one_speed": "1 speed", "three_speed": "3 speeds" }
+      }
+    },
+    "sensor": {
+      "room_temperature": { "name": "Room temperature" },
+      "effective_setpoint": { "name": "Effective setpoint" },
+      "operating_mode": {
+        "name": "Operating mode",
+        "state": { "comfort": "Comfort", "economy": "Economy", "protection": "Protection" }
+      },
+      "heating_output": { "name": "Heating output" },
+      "cooling_output": { "name": "Cooling output" },
+      "heater_output": { "name": "Electric heater output" },
+      "fan_output": {
+        "name": "Fan output",
+        "state": { "off": "Off", "low": "Low", "medium": "Medium", "high": "High" }
+      },
+      "fan_operation": {
+        "name": "Fan operation",
+        "state": { "auto": "Automatic", "manual": "Manual" }
+      },
+      "application": {
+        "name": "Application",
+        "state": {
+          "none": "None",
+          "two_pipe": "2-pipe, on/off",
+          "two_pipe_3pos": "2-pipe, 3-position",
+          "two_pipe_heater": "2-pipe with electric heater",
+          "four_pipe": "4-pipe"
+        }
+      },
+      "modbus_address": { "name": "Modbus address" },
+      "baud_rate": { "name": "Baud rate" },
+      "parity": {
+        "name": "Parity",
+        "state": { "odd": "Odd", "even": "Even", "none": "None" }
+      },
+      "active_fault": {
+        "name": "Active fault",
+        "state": {
+          "no_fault": "No fault",
+          "condensation": "Condensation",
+          "fault_input_1": "Fault input 1",
+          "fault_input_2": "Fault input 2",
+          "dirty_filter": "Dirty filter",
+          "other": "Other"
+        }
+      },
+      "input_external": { "name": "{input} external room temperature" },
+      "input_floor": { "name": "{input} floor temperature" },
+      "input_changeover": { "name": "{input} changeover temperature" },
+      "input_monitor": { "name": "{input} monitor temperature" }
+    },
+    "switch": {
+      "window_open": { "name": "Window open" },
+      "heater_enable": { "name": "Electric heater enable" },
+      "heater_in_cooling": { "name": "Electric heater in cooling mode" },
+      "fan_start_kick": { "name": "Fan start kick" },
+      "temporary_comfort_setpoint": { "name": "Temporary Comfort setpoint" }
+    },
+    "text": {
+      "text_condensation": { "name": "Condensation fault text" },
+      "text_fault_input_1": { "name": "Fault input 1 text" },
+      "text_fault_input_2": { "name": "Fault input 2 text" },
+      "text_dirty_filter": { "name": "Dirty filter fault text" }
+    }
+  },
+  "exceptions": {
+    "communication_error": { "message": "Communication with the thermostat failed: {error}" },
+    "write_failed": { "message": "Writing to the thermostat failed: {error}" },
+    "setpoint_in_protection": {
+      "message": "The target cannot be changed in Protection mode. Use the Protection setpoint numbers instead."
+    },
+    "economy_setpoint_unknown": {
+      "message": "Cannot tell which Economy setpoint is in use. Use the Economy setpoint numbers instead."
+    },
+    "economy_setpoint_crossed": {
+      "message": "The Economy heating setpoint cannot be above the Economy cooling setpoint."
+    },
+    "input_function_in_use": {
+      "message": "The other input already has this function, and the thermostat allows it on only one input."
+    }
+  }
+}

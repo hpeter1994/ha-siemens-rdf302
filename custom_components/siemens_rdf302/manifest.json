@@ -1,0 +1,14 @@
+{
+  "domain": "siemens_rdf302",
+  "name": "Siemens RDF302",
+  "codeowners": ["@hpeter1994"],
+  "config_flow": true,
+  "dependencies": ["modbus"],
+  "documentation": "https://github.com/hpeter1994/ha-siemens-rdf302",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/hpeter1994/ha-siemens-rdf302/issues",
+  "loggers": ["modbus_connection", "tmodbus"],
+  "requirements": [],
+  "version": "0.1.0"
+}
