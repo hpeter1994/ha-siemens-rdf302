@@ -5,7 +5,7 @@
 
 Custom integration for the Siemens RDF302, RDF302/VB and RDF302.B room thermostats, reached over Modbus through an RTU-to-TCP bridge such as the Elfin EW11. It uses the shared Modbus connection in Home Assistant's `modbus` integration and is set up entirely in the UI, with no YAML.
 
-Not affiliated with or endorsed by Siemens. Siemens and RDF302 are names of their respective owner, used only to describe compatibility.
+Not affiliated with, endorsed by or sponsored by Siemens. Siemens and RDF302 are trademarks of Siemens AG, used only to describe compatibility. The Siemens logo shown as the integration's icon is a trademark of Siemens AG, used only to identify the devices this integration works with. It doesn't mean Siemens made, approved or supports this integration.
 
 ## Features
 
@@ -86,7 +86,7 @@ The thermostat's registers are one address lower on the wire than its manual lis
 - [Design notes and full entity list](docs/design.md)
 - [Publishing checklist](docs/publishing.md)
 
-The original Siemens manuals are in [docs/manuals](docs/manuals/README.md). They aren't covered by this repository's license, and copyright stays with Siemens.
+The original Siemens manuals are in [docs/manuals](docs/manuals/README.md). They aren't covered by this repository's license, and copyright stays with Siemens. The same applies to the Siemens logo in `custom_components/siemens_rdf302/brand`: the MIT license doesn't cover it. See [docs/logo-notice.md](docs/logo-notice.md).
 
 ## Development
 

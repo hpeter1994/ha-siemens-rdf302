@@ -24,7 +24,7 @@ This works as soon as the repository is public. Add its URL in HACS under **Cust
 ## Submit to the HACS default store (optional)
 
 - [ ] Make sure the HACS and Hassfest actions pass with no errors or ignores.
-- [ ] After they pass, create a full GitHub release, not just a tag, such as `v0.1.0`. Its version should match `manifest.json`.
+- [ ] After they pass, create a full GitHub release, not just a tag, such as `v0.2.0`. Its version should match `manifest.json`.
 - [ ] Open a pull request to [hacs/default](https://github.com/hacs/default), adding the repository to the `integration` file in alphabetical order. It must come from your personal account, not an organization.
 
 ## For each later release
