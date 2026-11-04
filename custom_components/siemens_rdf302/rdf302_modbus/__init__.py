@@ -73,6 +73,18 @@ REG_FAULT_TEXT_4: Final = 500
 _FAST_INPUT_REQUIRED: Final = (REG_MODE_STATE, 12)
 _FAST_HOLDING: Final = (REG_MODE_COMMAND, 9)
 _FAST_FAULT: Final = (REG_FAULT, TEXT_REGISTERS)
+# Fast registers that move on their own, so they don't count as a change.
+_MEASUREMENTS: Final = frozenset(
+    {
+        REG_FAN_OUTPUT,
+        REG_ROOM_TEMP,
+        REG_HEATING_OUTPUT,
+        REG_COOLING_OUTPUT,
+        REG_HEATER_OUTPUT,
+        REG_X1_TEMP,
+        REG_X2_TEMP,
+    }
+)
 _SLOW_HOLDING: Final = (
     (REG_P01, 1),
     (REG_P02, 1),
@@ -230,6 +242,15 @@ class Rdf302:
             REG_CLOCK - ADDRESS_OFFSET, encode_clock(now)
         )
 
+    def runtime_state(self) -> tuple[int | None, ...]:
+        """Return the fast registers set by someone, leaving out measurements."""
+        return tuple(
+            self.raw(address + offset)
+            for address, count in (_FAST_INPUT_REQUIRED, _FAST_HOLDING, _FAST_FAULT)
+            for offset in range(count)
+            if address + offset not in _MEASUREMENTS
+        )
+
     def raw(self, address: int) -> int | None:
         """Return a register as read, or None if it is not known."""
         return self.registers.get(address)
@@ -295,6 +316,17 @@ class Rdf302:
         return self.raw(REG_P01) == 3 and not self.has_input_function(
             InputFunction.CHANGEOVER
         )
+
+    @property
+    def changeover(self) -> int | None:
+        """Return the heating/cooling direction (107), where it is known.
+
+        It follows the bus with Modbus changeover and the wall button with
+        manual changeover, which ignores bus writes.
+        """
+        if self.modbus_changeover or self.raw(REG_P01) == 2:
+            return self.raw(REG_CHANGEOVER)
+        return None
 
     @property
     def fault_text(self) -> str | None:
@@ -377,7 +409,7 @@ class Rdf302:
         if lower < upper:
             return lower, upper
         p01 = self.raw(REG_P01)
-        changeover = self.raw(REG_CHANGEOVER) if self.modbus_changeover else None
+        changeover = self.changeover
         if p01 == 0 or changeover == 1:
             return 5.0, upper
         if p01 == 1 or changeover == 0:

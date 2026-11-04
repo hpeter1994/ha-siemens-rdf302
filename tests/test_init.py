@@ -125,7 +125,68 @@ async def test_hourly_clock_sync_only_when_displayed(
     await hass.async_block_till_done()
     assert not [w for w in writes if w.address == 600]
 
-    entry.runtime_data.device.registers[7] = 4
+    # Showing the clock changes the entities, so the entry reloads.
+    unit.holding[7] = 4
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
     async_fire_time_changed(hass, top_of_hour.replace(hour=(top_of_hour.hour + 1) % 24))
     await hass.async_block_till_done()
     assert [w for w in writes if w.address == 600]
+
+
+@pytest.mark.usefixtures("mock_link")
+async def test_clock_resynced_after_outage(
+    hass: HomeAssistant, entry: MockConfigEntry, unit: MockModbusUnit
+) -> None:
+    """A power cut clears the clock, so it is written once the link returns."""
+    writes = []
+    unit.on_write(writes.append)
+    unit.holding[7] = 4
+    await setup_entry(hass, entry)
+
+    unit.fail_requests(ModbusTimeoutError())
+    async_fire_time_changed(hass, dt_util.utcnow() + FAST_SCAN_INTERVAL)
+    await hass.async_block_till_done()
+    assert not [w for w in writes if w.address == 600]
+
+    unit.fail_requests(None)
+    async_fire_time_changed(hass, dt_util.utcnow() + 2 * FAST_SCAN_INTERVAL)
+    await hass.async_block_till_done()
+    assert len([w for w in writes if w.address == 600]) == 1
+
+
+@pytest.mark.usefixtures("mock_link")
+async def test_parameters_reread_when_state_changes(
+    hass: HomeAssistant, entry: MockConfigEntry, unit: MockModbusUnit
+) -> None:
+    """A change at the wall re-reads every setting without waiting for the slow poll."""
+    await setup_entry(hass, entry)
+    device = entry.runtime_data.device
+
+    unit.holding[11] = 12 * 50
+    unit.input[1003] = 23 * 50
+    async_fire_time_changed(hass, dt_util.utcnow() + FAST_SCAN_INTERVAL)
+    await hass.async_block_till_done()
+    assert device.raw(1003) == 23 * 50
+    assert device.raw(11) != 12 * 50
+
+    unit.input[1001] = 3
+    async_fire_time_changed(hass, dt_util.utcnow() + 2 * FAST_SCAN_INTERVAL)
+    await hass.async_block_till_done()
+    assert device.raw(11) == 12 * 50
+
+
+@pytest.mark.usefixtures("mock_link")
+async def test_parameters_reread_after_runtime_write(
+    hass: HomeAssistant, entry: MockConfigEntry, unit: MockModbusUnit
+) -> None:
+    """Commands can change settings too, so every write re-reads them."""
+    await setup_entry(hass, entry)
+    unit.holding[11] = 12 * 50
+    await hass.services.async_call(
+        "climate",
+        "set_preset_mode",
+        {"entity_id": "climate.rdf302", "preset_mode": "eco"},
+        blocking=True,
+    )
+    assert entry.runtime_data.device.raw(11) == 12 * 50

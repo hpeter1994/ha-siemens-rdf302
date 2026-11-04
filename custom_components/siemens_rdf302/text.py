@@ -56,4 +56,4 @@ class Rdf302FaultText(Rdf302Entity, TextEntity):
     async def async_set_value(self, value: str) -> None:
         """Write the text."""
         await self.runtime.async_call(self.device.async_write_text(self._address, value))
-        await self.runtime.async_refresh_after_write(self._address)
+        await self.runtime.async_refresh_after_write()

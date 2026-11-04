@@ -1,7 +1,7 @@
 """Polling for the Siemens RDF302 integration."""
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 import logging
 
@@ -13,12 +13,9 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DOMAIN
-from .rdf302_modbus import REG_CHANGEOVER, REG_KEY_LOCK, REG_MODE_COMMAND, Rdf302
+from .rdf302_modbus import Rdf302
 
 _LOGGER = logging.getLogger(__name__)
-
-_FIRST_RUNTIME_REGISTER = REG_MODE_COMMAND
-_LAST_RUNTIME_REGISTER = max(REG_CHANGEOVER, REG_KEY_LOCK)
 
 
 class Rdf302Coordinator(DataUpdateCoordinator[None]):
@@ -66,11 +63,13 @@ class Rdf302Runtime:
     device: Rdf302
     fast: Rdf302Coordinator
     slow: Rdf302Coordinator
+    _runtime_state: tuple[int | None, ...] | None = field(default=None, init=False)
+    _writing: bool = field(default=False, init=False)
 
     async def async_write(self, address: int, value: int) -> None:
         """Write a register and refresh what it can have changed."""
         await self.async_call(self.device.async_write(address, value))
-        await self.async_refresh_after_write(address)
+        await self.async_refresh_after_write()
 
     async def async_call(self, call: Awaitable[None]) -> None:
         """Run a device call, reporting a failure to the user."""
@@ -83,11 +82,25 @@ class Rdf302Runtime:
                 translation_placeholders={"error": str(err)},
             ) from err
 
-    async def async_refresh_after_write(self, address: int) -> None:
-        """Refresh after a write; a parameter also needs the slow group."""
-        if not _FIRST_RUNTIME_REGISTER <= address <= _LAST_RUNTIME_REGISTER:
+    async def async_refresh_after_write(self) -> None:
+        """Refresh everything after a write; the device may change related settings."""
+        self._writing = True
+        try:
             await self.slow.async_refresh()
-        await self.fast.async_refresh()
+            await self.fast.async_refresh()
+        finally:
+            self._writing = False
+
+    def runtime_changed(self) -> bool:
+        """Return whether something other than our own write changed the state.
+
+        Changes made at the wall can come with parameter changes, so the
+        caller then refreshes the parameters too.
+        """
+        state = self.device.runtime_state()
+        changed = self._runtime_state is not None and state != self._runtime_state
+        self._runtime_state = state
+        return changed and not self._writing
 
 
 type Rdf302ConfigEntry = ConfigEntry[Rdf302Runtime]

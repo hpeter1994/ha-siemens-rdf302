@@ -13,7 +13,6 @@ from .const import DOMAIN
 from .coordinator import Rdf302ConfigEntry
 from .entity import Rdf302Entity
 from .rdf302_modbus import (
-    REG_INPUT_FUNCTIONS,
     REG_KEY_LOCK,
     REG_P01,
     REG_P02,
@@ -208,4 +207,4 @@ class Rdf302InputFunction(Rdf302Entity, SelectEntity):
         await self.runtime.async_call(
             self.device.async_write_input_function(self._number, function)
         )
-        await self.runtime.async_refresh_after_write(REG_INPUT_FUNCTIONS)
+        await self.runtime.async_refresh_after_write()

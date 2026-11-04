@@ -2,7 +2,7 @@
 
 Tested remotely on 2026-11-01, on one RDF302 in a 2-pipe application at Modbus address 2, through an Elfin EW11 with Protocol = Modbus on port 502. Tests ran through the real integration and Home Assistant's `modbus` integration. All settings were restored and compared with a starting snapshot after each phase.
 
-Nobody was at the thermostat, so only Modbus readback was checked. Nothing here confirms what the display showed or how the buttons behaved.
+Nobody was at the thermostat, so only Modbus readback was checked. On 2026-11-04 the same thermostat was tested on site, with someone at the display and buttons; see [On site](#on-site).
 
 ## Findings that differ from the manual
 
@@ -37,6 +37,23 @@ Nobody was at the thermostat, so only Modbus readback was checked. Nothing here 
 | Key lock (108) | All levels write, read back and release over Modbus |
 | Outside temperature (104) | Written and read back |
 
+## On site
+
+Tested on 2026-11-04 with someone at the thermostat, through Home Assistant and a read-only register log.
+
+| Area | Result |
+|---|---|
+| Protection from Modbus | All wall buttons do nothing until Modbus commands Comfort or Economy; then they work again |
+| Modes, targets, fan, heat/cool, window state | The display follows Home Assistant, and Home Assistant follows the wall's + and −, mode and fan buttons |
+| Key lock | Plus/minus, fan and unlocked behave as named. **Mode also blocks + and −** |
+| Manual changeover (`P01` = 2) | The mode button cycles OFF, on, OFF, on; switching it off and on quickly changes heating and cooling. 107 follows the button both ways, and **a bus write to 107 is accepted but ignored** |
+| Automatic changeover (`P01` = 3) | The wall button only cycles Comfort and Eco; holding it or lowering the target doesn't switch to cooling. Only 107 changes the direction. Setting `P01` = 3 set 107 to heating |
+| Outside temperature (`P07` = 2) | Shown on a second line with an outside icon |
+| Clock (`P07` = 4) | Showed a wrong time until synced, then the right time, and keeps running. The extra line shows the outside temperature or the time, not both |
+| °F | Room and setpoint shown in °F. Switching back to °C turned a 9.5 °C Comfort setpoint into 9.4 °C |
+| Fault | No fault on the display, matching Home Assistant |
+| Power cycle | Settings, Comfort setpoint and mode kept. **The clock was cleared** (shows dashes). 106 changed from 0 to 1. Home Assistant reconnected about 10 s after power returned. With the resync after reconnecting, the time came back within a few seconds |
+
 ## Running Home Assistant instance
 
 Also tested on a real Home Assistant 2026.10.4 instance, through its service calls:
@@ -54,10 +71,8 @@ The connection closed briefly about three times during roughly 20 minutes of tes
 
 **Needs someone at the thermostat:**
 
-- Whether Modbus mode commands block the wall's mode button, and whether key lock actually blocks the buttons
-- Whether 102 follows the wall's fan button
-- What the display shows for time, outside temperature and °F. The clock register doesn't advance when read back, so this is also the only way to see whether the clock runs
-- What survives a power cycle, and whether writing 103 reaches EEPROM
+- The "all" key lock level
+- Whether writing 103 reaches EEPROM, separately from changes made at the wall
 
 **Needs wiring or a different setup:**
 

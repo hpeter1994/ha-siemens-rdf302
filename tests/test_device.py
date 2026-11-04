@@ -164,7 +164,8 @@ async def test_economy_register_ambiguous(unit: MockModbusUnit) -> None:
         (18, 25, 2, (18, 25)),
         (25, 21, 0, (5, 21)),
         (25, 21, 1, (25, 40)),
-        (25, 21, 2, (5, 40)),
+        (25, 21, 2, (5, 21)),
+        (25, 21, 4, (5, 40)),
     ],
 )
 async def test_comfort_limits(

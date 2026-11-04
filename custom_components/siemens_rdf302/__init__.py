@@ -67,7 +67,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: Rdf302ConfigEntry) -> bo
     )
     await fast.async_config_entry_first_refresh()
     await slow.async_config_entry_first_refresh()
-    entry.runtime_data = Rdf302Runtime(device, fast, slow)
+    runtime = entry.runtime_data = Rdf302Runtime(device, fast, slow)
 
     structure = device.structure_key()
 
@@ -92,6 +92,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: Rdf302ConfigEntry) -> bo
     entry.async_on_unload(
         async_track_time_change(hass, _async_sync_clock, minute=0, second=5)
     )
+
+    was_available = True
+
+    @callback
+    def _async_sync_clock_on_reconnect() -> None:
+        """Resync after an outage; a power cut clears the clock."""
+        nonlocal was_available
+        if fast.last_update_success and not was_available:
+            entry.async_create_background_task(
+                hass, _async_sync_clock(dt_util.now()), "rdf302_clock_resync"
+            )
+        was_available = fast.last_update_success
+
+    entry.async_on_unload(fast.async_add_listener(_async_sync_clock_on_reconnect))
+
+    @callback
+    def _async_refresh_parameters_on_change() -> None:
+        """Re-read every setting once something changed between polls."""
+        if fast.last_update_success and runtime.runtime_changed():
+            entry.async_create_background_task(
+                hass, slow.async_refresh(), "rdf302_parameter_refresh"
+            )
+
+    entry.async_on_unload(fast.async_add_listener(_async_refresh_parameters_on_change))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True

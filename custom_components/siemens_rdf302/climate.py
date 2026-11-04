@@ -72,7 +72,6 @@ class Rdf302Climate(Rdf302Entity, ClimateEntity):
         super().__init__(entry)
         self._attr_unique_id = entry.entry_id
         self._last_mode = MODE_COMFORT
-        self._attr_hvac_modes = [*self._active_hvac_modes(), HVACMode.OFF]
         features = (
             ClimateEntityFeature.TARGET_TEMPERATURE
             | ClimateEntityFeature.PRESET_MODE
@@ -95,11 +94,19 @@ class Rdf302Climate(Rdf302Entity, ClimateEntity):
                 return [HVACMode.HEAT]
             case 1:
                 return [HVACMode.COOL]
+            case 2 if self.device.changeover is not None:
+                # Only the wall button changes direction; show the one it chose.
+                return [HVACMode.HEAT if self.device.changeover else HVACMode.COOL]
             case 3 if self.device.modbus_changeover:
                 return [HVACMode.HEAT, HVACMode.COOL]
             case 4:
                 return [HVACMode.HEAT_COOL]
         return [HVACMode.AUTO]
+
+    @property
+    def hvac_modes(self) -> list[HVACMode]:
+        """Return the modes that can be selected."""
+        return [*self._active_hvac_modes(), HVACMode.OFF]
 
     @property
     def _mode(self) -> int | None:
@@ -112,7 +119,7 @@ class Rdf302Climate(Rdf302Entity, ClimateEntity):
         if self._mode == MODE_PROTECTION:
             return HVACMode.OFF
         if self.device.modbus_changeover:
-            if self.device.raw(REG_CHANGEOVER) == 1:
+            if self.device.changeover == 1:
                 return HVACMode.HEAT
             return HVACMode.COOL
         return self._active_hvac_modes()[0]

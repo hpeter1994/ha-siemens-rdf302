@@ -29,7 +29,7 @@ async def _climate(hass: HomeAssistant, service: str, **data) -> None:
     [
         (0, 3, {HVACMode.HEAT, HVACMode.OFF}),
         (1, 3, {HVACMode.COOL, HVACMode.OFF}),
-        (2, 3, {HVACMode.AUTO, HVACMode.OFF}),
+        (2, 3, {HVACMode.HEAT, HVACMode.OFF}),
         (3, 3, {HVACMode.HEAT, HVACMode.COOL, HVACMode.OFF}),
         (3, 2, {HVACMode.AUTO, HVACMode.OFF}),
         (4, 3, {HVACMode.HEAT_COOL, HVACMode.OFF}),
@@ -56,7 +56,7 @@ async def test_climate_state(
     """Values are decoded from the registers."""
     await setup_entry(hass, entry)
     state = hass.states.get(CLIMATE)
-    assert state.state == HVACMode.AUTO
+    assert state.state == HVACMode.HEAT
     assert state.attributes["current_temperature"] == 22
     assert state.attributes["temperature"] == 21
     assert state.attributes["preset_mode"] == "comfort"
@@ -90,8 +90,9 @@ async def test_off_is_protection_and_on_restores(
     assert hass.states.get(CLIMATE).state == HVACMode.OFF
     assert hass.states.get(CLIMATE).attributes["preset_mode"] is None
 
-    await _climate(hass, "set_hvac_mode", hvac_mode="auto")
+    await _climate(hass, "set_hvac_mode", hvac_mode="heat")
     assert unit.holding[101] == 3
+    assert unit.holding[107] == 1
 
 
 async def test_turn_on_keeps_direction(
@@ -123,6 +124,31 @@ async def test_changeover_written_over_bus(
     await _climate(hass, "set_hvac_mode", hvac_mode="cool")
     assert unit.holding[107] == 0
     assert hass.states.get(CLIMATE).state == HVACMode.COOL
+
+
+async def test_manual_changeover_shows_wall_direction(
+    hass: HomeAssistant, entry: MockConfigEntry, unit: MockModbusUnit
+) -> None:
+    """With manual changeover 107 follows the wall button and is never written."""
+    unit.holding[1] = 2
+    unit.holding[107] = 0
+    unit.input[1001] = 4
+    await setup_entry(hass, entry)
+    state = hass.states.get(CLIMATE)
+    assert state.state == HVACMode.OFF
+    assert set(state.attributes["hvac_modes"]) == {HVACMode.COOL, HVACMode.OFF}
+
+    await _climate(hass, "set_hvac_mode", hvac_mode="cool")
+    assert unit.holding[101] == 1
+    assert unit.holding[107] == 0
+
+    unit.holding[107] = 1
+    unit.input[1001] = 1
+    await entry.runtime_data.fast.async_refresh()
+    await hass.async_block_till_done()
+    state = hass.states.get(CLIMATE)
+    assert state.state == HVACMode.HEAT
+    assert set(state.attributes["hvac_modes"]) == {HVACMode.HEAT, HVACMode.OFF}
 
 
 async def test_target_in_comfort(

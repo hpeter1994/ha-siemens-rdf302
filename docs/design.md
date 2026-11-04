@@ -11,7 +11,7 @@ The datasheet and the operating instructions add no registers.
 Home Assistant
   siemens_rdf302 (one config entry per thermostat)
     vendored rdf302_modbus library: registers, scaling, no HA imports
-    fast coordinator (30 s)  +  slow coordinator (1 h, and after a parameter write)
+    fast coordinator (5 s)  +  slow coordinator (5 min, after any write, and when a fast poll sees a change)
         |  async_get_unit(hass, entry, ModbusTcpParams(host, port), unit_id)
   modbus (HA core): owns the shared connection and queues requests
         |  TCP
@@ -41,10 +41,12 @@ The manual's "access group" column defines which registers may be read in one re
 
 | Coordinator | Reads |
 |---|---|
-| Fast, 30 s | 1001-1012; 101-109; 1100-1109 (3 requests) |
-| Slow, 1 h and after a parameter write | P01; P02; 4-14; 30-31; 33-37; 38; 40-41; 44; 182; 48-62; 65; 66; 68-71; 81; fault texts 200, 300, 400, 500 (about 18 requests) |
+| Fast, 5 s | 1001-1012; 101-109; 1100-1109 (3 requests) |
+| Slow, 5 min, after any write, and when the fast poll sees a change | P01; P02; 4-14; 30-31; 33-37; 38; 40-41; 44; 182; 48-62; 65; 66; 68-71; 81; fault texts 200, 300, 400, 500 (about 18 requests) |
 
-Every write is followed by an immediate refresh of the affected coordinator. Nothing is written at startup.
+A change means any fast register other than the measurements (room, X1 and X2 temperatures, outputs). Changes at the wall, such as the mode button in manual changeover, can come with parameter changes, so all settings are read again at once instead of after up to 5 minutes.
+
+Every write is followed by an immediate refresh of both coordinators. Nothing is written at startup.
 
 ### Encoding
 
@@ -78,7 +80,7 @@ One `climate` entity covers objects 2, 3, 4, 5, 6, 7, 8, 12, 15, 16, 17 and 21.
 |---|---|---|---|
 | 0 | Heating only | `heat`, `off` | |
 | 1 | Cooling only | `cool`, `off` | |
-| 2 | Manual changeover | `auto`, `off` | Only the wall button can change heating/cooling |
+| 2 | Manual changeover | `heat` or `cool` (whichever 107 shows), `off` | Only the wall button can change heating/cooling; 107 follows it and ignores bus writes |
 | 3, no local changeover input | Changeover via Modbus | `heat`, `cool`, `off` | Writes 107 (0 = cool, 1 = heat) |
 | 3, X1 or X2 = 2 | Changeover via sensor or switch | `auto`, `off` | The input decides |
 | 4 | Heating and cooling | `heat_cool`, `off` | One setpoint in the middle of the dead zone (P33) |
@@ -146,7 +148,7 @@ Each input gets the entity matching its function in P38 or P40. The X1 registers
 | Electric heater enable | 106 | switch | 2-pipe with electric heater, and neither input is function 5 |
 | Comfort setpoint | 103 | number 5-40 °C | Writable in any mode |
 | Outside temperature | 104 | number 0-49 °C | Shown when P07 = 2. **Cannot represent values below 0 °C**, so feed it from an automation and expect it to clamp |
-| Sync clock | 600-603 | button | Created when P07 = 3 or 4. Clock also syncs hourly, and on a daylight-saving change, in that case |
+| Sync clock | 600-603 | button | Created when P07 = 3 or 4. Clock also syncs hourly, and after a failed poll recovers, in that case |
 
 ### Setpoint parameters, enabled
 
@@ -213,7 +215,7 @@ All are category config. Conditional ones follow section 3.13 of the manual.
 Plant type (109)   -> which outputs, P13, P34, P35, P44, P46, P54 and heater enable exist
 P01                -> climate HVAC modes; whether 107 can be written
 P38, P40 (X1, X2)  -> which input entities exist
-                   -> 3 hides Window open; 5 hides Heater enable; 2 makes changeover "auto"
+                   -> 3 hides Window open; 5 hides Heater enable; 2 shows the direction from 107
                       and exposes P36, P37, P50
 P51 + input 1      -> external sensor becomes floor sensor; room temperature uses built-in sensor
 P52                -> fan features and fan sensors exist
@@ -227,7 +229,7 @@ Operating mode priority, highest first: commissioning at the wall, X1/X2 contact
 
 ## 5. Device behaviour to be aware of
 
-1. **Writing an operating mode can lock the wall button.** Protection over Modbus disables all buttons. For Comfort or Economy, the manual says the unit flashes "OFF" when the mode button is pressed. There is no "release to local" value.
+1. **Protection over Modbus disables all wall buttons** until Modbus commands Comfort or Economy. The manual suggests Comfort or Economy commands also block the mode button, but on site the buttons worked normally afterwards. There is no "release to local" value.
 2. **`off` is not off.** Protection still holds frost protection (P65, 8 °C by default). If P65 = OFF nothing protects the room.
 3. **Writing P02, or setting P01 to manual changeover, forces Protection mode.** Writing P08 also resets the runtime Comfort setpoint (103) to the new value.
 4. **No heating/cooling state register exists.** Only the outputs and 107 are available, and the manual does not say whether 107 tracks changes from an input or the wall button.

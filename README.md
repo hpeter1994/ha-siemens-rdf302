@@ -12,7 +12,7 @@ Not affiliated with or endorsed by Siemens. Siemens and RDF302 are names of thei
 - **Climate entity:** temperature, target, HVAC mode, Comfort and Eco presets, fan mode and current action
 - **Sensors:** room temperature, effective setpoint, operating mode, outputs, active fault and problem state
 - **Controls:** key lock, window state, electric heater enable, Comfort setpoint and outside temperature
-- **Clock sync:** automatic each hour, plus a button, when the display is set to show the time
+- **Clock sync:** automatic each hour and after the thermostat reconnects, plus a button, when the display is set to show the time
 - **X1 and X2 inputs:** entities that match each input's configured function
 - **Eco and Protection setpoints,** plus about 40 expert parameters that are disabled by default
 - **Entities that follow your setup:** only what your application and settings use is created, and the integration reloads itself when those settings change
@@ -58,19 +58,20 @@ Add one entry per thermostat. Thermostats on the same bridge share its connectio
 
 ## Before you use it
 
-- **`off` means Protection mode.** The thermostat has no true off. Frost protection stays active (`P65`, 8 °C by default), and the wall buttons are disabled while Protection is commanded over Modbus.
-- **The wall's mode button may stop working.** The manual indicates that a Modbus mode command can block it, and the thermostat has no value that hands control back.
+- **`off` means Protection mode.** The thermostat has no true off. Frost protection stays active (`P65`, 8 °C by default). When Protection is commanded over Modbus, the wall buttons do nothing until Home Assistant turns the thermostat back on.
+- **Heating and cooling depend on `P01`.** With automatic changeover and no changeover input, only Home Assistant can switch between heat and cool. With manual changeover, only the wall's mode button can, and Home Assistant shows the direction it chose, with on and off.
 - **Selecting `heat` or `cool` can start equipment straight away** if the target calls for it. Check the target first.
 - **Target temperature:** in Comfort it writes the Comfort setpoint. In Eco it writes the Eco setpoint in use, which is stored in EEPROM, so don't have automations change it often. In Protection it's rejected.
-- **Some parameter changes have side effects.** Writing `P02`, or setting `P01` to manual changeover, forces Protection mode. Writing `P08` overwrites the current Comfort setpoint. Setting `P01` to heating only or cooling only also changes the heat/cool direction.
+- **Some parameter changes have side effects.** Writing `P02`, or setting `P01` to manual changeover, forces Protection mode. Writing `P08` overwrites the current Comfort setpoint. Setting `P01` to heating only, cooling only or automatic changeover also changes the heat/cool direction. Switching the display to °F and back can round the Comfort setpoint by 0.1 °C.
 - **Not writable on purpose:** application type, factory reset, address, baud rate and parity. Change them at the thermostat, because a wrong value can take it off the bus.
-- **Outside temperature** only displays 0–49 °C, so it can't show frost. Update it with your own automation.
+- **Outside temperature** only displays 0–49 °C, so it can't show frost. Update it with your own automation. The display's extra line shows either the outside temperature or the time, not both.
+- **A power cut clears the clock.** The integration writes it again once the thermostat answers, and every hour.
 - **Only the highest-priority fault is reported** by the thermostat, so there's one fault sensor and not one per fault.
 - **Removed entities:** if a setting removes an entity, the old one stays listed as unavailable until you delete it.
 
 ## Tested hardware
 
-Tested remotely on one RDF302 in a 2-pipe application, through an Elfin EW11 with Protocol set to Modbus. The wall buttons and display couldn't be observed remotely, and the RDF302/VB and RDF302.B have only been tested in simulation. See [docs/hardware-testing.md](docs/hardware-testing.md) for what's confirmed and what's still open.
+Tested on one RDF302 in a 2-pipe application, through an Elfin EW11 with Protocol set to Modbus: first remotely, then on site with the wall buttons and display. The RDF302/VB and RDF302.B have only been tested in simulation. See [docs/hardware-testing.md](docs/hardware-testing.md) for what's confirmed and what's still open.
 
 The thermostat's registers are one address lower on the wire than its manual lists. The integration handles this, and [docs/registers.md](docs/registers.md) lists both.
 

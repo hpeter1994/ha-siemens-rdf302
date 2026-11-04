@@ -14,8 +14,8 @@ DEFAULT_PORT: Final = 502
 DEFAULT_UNIT_ID: Final = 1
 DEFAULT_NAME: Final = "RDF302"
 
-FAST_SCAN_INTERVAL: Final = timedelta(seconds=30)
-SLOW_SCAN_INTERVAL: Final = timedelta(hours=1)
+FAST_SCAN_INTERVAL: Final = timedelta(seconds=5)
+SLOW_SCAN_INTERVAL: Final = timedelta(minutes=5)
 
 # Keeps the RS485 side of the bridge quiet between requests.
 MESSAGE_SPACING: Final = 0.05
