@@ -2,7 +2,7 @@
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 import logging
 
 from modbus_connection import ModbusConnectionError, ModbusError
@@ -11,6 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .rdf302_modbus import Rdf302
@@ -65,6 +66,8 @@ class Rdf302Runtime:
     slow: Rdf302Coordinator
     _runtime_state: tuple[int | None, ...] | None = field(default=None, init=False)
     _writing: bool = field(default=False, init=False)
+    unique_ids: set[str] = field(default_factory=set, init=False)
+    last_clock_sync: datetime | None = field(default=None, init=False)
 
     async def async_write(self, address: int, value: int) -> None:
         """Write a register and refresh what it can have changed."""
@@ -81,6 +84,13 @@ class Rdf302Runtime:
                 translation_key="write_failed",
                 translation_placeholders={"error": str(err)},
             ) from err
+
+    async def async_sync_clock(self) -> None:
+        """Send the current time and note when, for the last sync sensor."""
+        now = dt_util.now()
+        await self.device.async_set_clock(now)
+        self.last_clock_sync = now
+        self.fast.async_update_listeners()
 
     async def async_refresh_after_write(self) -> None:
         """Refresh everything after a write; the device may change related settings."""

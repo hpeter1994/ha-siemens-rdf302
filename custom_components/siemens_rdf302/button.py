@@ -1,9 +1,9 @@
 """Button for the Siemens RDF302 integration."""
 
 from homeassistant.components.button import ButtonEntity
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from homeassistant.util import dt as dt_util
 
 from .coordinator import Rdf302ConfigEntry
 from .entity import Rdf302Entity
@@ -23,6 +23,7 @@ async def async_setup_entry(
 class Rdf302SyncClock(Rdf302Entity, ButtonEntity):
     """Set the thermostat's clock to the current time."""
 
+    _attr_entity_category = EntityCategory.CONFIG
     _attr_translation_key = "sync_clock"
 
     def __init__(self, entry: Rdf302ConfigEntry) -> None:
@@ -32,4 +33,4 @@ class Rdf302SyncClock(Rdf302Entity, ButtonEntity):
 
     async def async_press(self) -> None:
         """Send the time."""
-        await self.runtime.async_call(self.device.async_set_clock(dt_util.now()))
+        await self.runtime.async_call(self.runtime.async_sync_clock())

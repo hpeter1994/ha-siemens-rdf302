@@ -150,6 +150,19 @@ class InputFunction(IntEnum):
     TEMP_MONITOR = 8
 
 
+# Changeover takes a sensor or a switch; the others below are switches only.
+_SWITCH_INPUT_FUNCTIONS: Final = frozenset(
+    {
+        InputFunction.CHANGEOVER,
+        InputFunction.MODE_CONTACT,
+        InputFunction.DEW_POINT,
+        InputFunction.HEATER_ENABLE,
+        InputFunction.FAULT,
+        InputFunction.DIGITAL_MONITOR,
+    }
+)
+
+
 class Fault(StrEnum):
     """The fault the bus reports. Only the highest-priority one is visible."""
 
@@ -301,6 +314,10 @@ class Rdf302:
             return InputFunction(value)
         return InputFunction.NOT_USED
 
+    def input_has_action(self, number: int) -> bool:
+        """Return whether NO/NC (P39, P41) applies, which it only does to switches."""
+        return self.input_function(number) in _SWITCH_INPUT_FUNCTIONS
+
     def has_input_function(self, function: InputFunction) -> bool:
         """Return whether either input has this function."""
         return function in (self.input_function(1), self.input_function(2))
@@ -309,6 +326,16 @@ class Rdf302:
     def has_fan(self) -> bool:
         """Return whether the fan is enabled (P52)."""
         return self.raw(REG_P52) != 0
+
+    @property
+    def can_heat(self) -> bool:
+        """Return whether anything can heat: P01 not cooling only, or a heater."""
+        return self.raw(REG_P01) != 1 or self.has_heater
+
+    @property
+    def can_cool(self) -> bool:
+        """Return whether P01 allows cooling."""
+        return self.raw(REG_P01) != 0
 
     @property
     def modbus_changeover(self) -> bool:
@@ -370,6 +397,17 @@ class Rdf302:
     def setpoint_active(self) -> float | None:
         """Return the effective setpoint, or None if control is off."""
         return _setpoint(self.raw(REG_CURRENT_SETPOINT))
+
+    @property
+    def setpoint_off(self) -> bool | None:
+        """Return whether the setpoint in use is set to OFF, or None if unknown."""
+        if (raw := self.raw(REG_CURRENT_SETPOINT)) is None:
+            return None
+        return _setpoint(raw) is None
+
+    def out_of_service(self, address: int) -> bool:
+        """Return whether a temperature register reports its sensor out of service."""
+        return self.raw(address) == OUT_OF_SERVICE
 
     def economy_setpoint_register(self) -> int | None:
         """Return which Economy setpoint is in use, or None if it cannot be told.

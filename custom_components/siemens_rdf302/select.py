@@ -80,14 +80,11 @@ def _config(
     )
 
 
-def _has_inputs(device: Rdf302) -> bool:
-    return device.has_inputs
-
-
 SELECTS: tuple[Rdf302SelectDescription, ...] = (
     Rdf302SelectDescription(
         key="key_lock",
         translation_key="key_lock",
+        entity_category=EntityCategory.CONFIG,
         address=REG_KEY_LOCK,
         values=(
             lock_values := {
@@ -116,14 +113,23 @@ SELECTS: tuple[Rdf302SelectDescription, ...] = (
         {0: "none", 1: "celsius_fahrenheit", 2: "outside", 3: "time_12h", 4: "time_24h"},
     ),
     _config("local_key_lock", 14, {0: "disabled", 1: "auto", 2: "manual"}),
-    _config("input_x1_action", 40, ACTION_OPTIONS, exists_fn=_has_inputs),
-    _config("input_x2_action", 41, ACTION_OPTIONS, exists_fn=_has_inputs),
+    _config(
+        "input_x1_action", 40, ACTION_OPTIONS, exists_fn=lambda d: d.input_has_action(1)
+    ),
+    _config(
+        "input_x2_action", 41, ACTION_OPTIONS, exists_fn=lambda d: d.input_has_action(2)
+    ),
     _config(
         "fan_control",
         REG_P52,
         {0: "disabled", 1: "enabled", 2: "heating_only", 3: "cooling_only"},
     ),
-    _config("fan_speeds", REG_P53, {1: "one_speed", 2: "three_speed"}),
+    _config(
+        "fan_speeds",
+        REG_P53,
+        {1: "one_speed", 2: "three_speed"},
+        exists_fn=lambda device: device.has_fan,
+    ),
 )
 
 

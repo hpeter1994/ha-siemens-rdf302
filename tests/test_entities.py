@@ -6,7 +6,7 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from homeassistant.components.climate import HVACMode
-from homeassistant.const import STATE_OFF, STATE_ON
+from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import entity_registry as er
@@ -229,6 +229,26 @@ async def test_off_marker_is_no_target(
     assert hass.states.get(CLIMATE).attributes["temperature"] is None
 
 
+@pytest.mark.parametrize(
+    ("raw", "value", "setpoint"),
+    [(225, "unknown", "off"), (2025, "unknown", "off"), (21 * 50, "21.0", "active")],
+)
+async def test_effective_setpoint_tells_off_apart(
+    hass: HomeAssistant,
+    entry: MockConfigEntry,
+    unit: MockModbusUnit,
+    raw: int,
+    value: str,
+    setpoint: str,
+) -> None:
+    """A setpoint set to OFF has no number, but says so in an attribute."""
+    unit.input[1004] = raw
+    await setup_entry(hass, entry)
+    state = hass.states.get("sensor.rdf302_effective_setpoint")
+    assert state.state == value
+    assert state.attributes["setpoint"] == setpoint
+
+
 async def test_fan_modes(
     hass: HomeAssistant, entry: MockConfigEntry, unit: MockModbusUnit
 ) -> None:
@@ -280,6 +300,21 @@ async def test_factory_inputs(
     assert hass.states.get("sensor.rdf302_x2_external_room_temperature") is not None
     # X1 is the mode contact, so the bus must not drive the same function.
     assert hass.states.get("switch.rdf302_window_open") is None
+
+
+async def test_input_out_of_service_is_unavailable(
+    hass: HomeAssistant, entry: MockConfigEntry, unit: MockModbusUnit
+) -> None:
+    """A missing or broken sensor makes its entity unavailable, not unknown."""
+    entity_id = "sensor.rdf302_x2_external_room_temperature"
+    unit.input[1009] = 0xFFFF
+    await setup_entry(hass, entry)
+    assert hass.states.get(entity_id).state == STATE_UNAVAILABLE
+
+    unit.input[1009] = 22 * 50
+    await entry.runtime_data.fast.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get(entity_id).state == "22.0"
 
 
 async def test_window_switch_without_contact(
@@ -385,8 +420,51 @@ async def test_expert_entities_disabled_and_dangerous_absent(
     by_key = {e.unique_id.removeprefix(f"{entry.entry_id}_"): e for e in entries}
     assert by_key["dead_zone"].disabled_by is er.RegistryEntryDisabler.INTEGRATION
     assert by_key["economy_heating_setpoint"].disabled_by is None
-    assert by_key["modbus_address"].domain == "sensor"
-    assert by_key["baud_rate"].domain == "sensor"
-    assert by_key["parity"].domain == "sensor"
+    # The serial settings are in diagnostics, not entities.
+    assert not {"modbus_address", "baud_rate", "parity"} & set(by_key)
     assert by_key["application"].domain == "sensor"
     assert not {"factory_reset", "plant_type"} & set(by_key)
+
+
+@pytest.mark.parametrize(
+    ("registers", "absent", "present"),
+    [
+        # Factory: X1 a mode contact (a switch), X2 an external sensor (analog).
+        ({}, {"input_x2_action"}, {"input_x1_action", "floor_temperature_limit"}),
+        ({38: 0}, {"input_x1_action", "input_x2_action", "floor_temperature_limit"}, set()),
+        ({38: 2}, {"input_x1_action"}, {"input_x2_action", "changeover_cooling_point"}),
+        (
+            {52: 0},
+            {"fan_speeds", "fan_point_high", "fan_kick_comfort", "fan_kick_economy"},
+            {"fan_control"},
+        ),
+        (
+            {1: 0},
+            {"economy_cooling_setpoint", "protection_cooling_setpoint", "differential_cooling"},
+            {"economy_heating_setpoint", "protection_heating_setpoint", "differential_heating"},
+        ),
+        (
+            {1: 1},
+            {"economy_heating_setpoint", "protection_heating_setpoint", "differential_heating"},
+            {"economy_cooling_setpoint", "protection_cooling_setpoint", "differential_cooling"},
+        ),
+        # Eco can still be entered over the bus or by the window state.
+        ({2: 1}, set(), {"economy_heating_setpoint", "fan_kick_economy"}),
+    ],
+)
+async def test_settings_only_where_they_apply(
+    hass: HomeAssistant,
+    entry: MockConfigEntry,
+    unit: MockModbusUnit,
+    entity_registry: er.EntityRegistry,
+    registers: dict[int, int],
+    absent: set[str],
+    present: set[str],
+) -> None:
+    """Settings that cannot have an effect are not created."""
+    unit.holding.update(registers)
+    await setup_entry(hass, entry)
+    entries = er.async_entries_for_config_entry(entity_registry, entry.entry_id)
+    keys = {e.unique_id.removeprefix(f"{entry.entry_id}_") for e in entries}
+    assert not absent & keys
+    assert present <= keys

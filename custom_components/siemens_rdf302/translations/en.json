@@ -205,7 +205,13 @@
     },
     "sensor": {
       "room_temperature": { "name": "Room temperature" },
-      "effective_setpoint": { "name": "Effective setpoint" },
+      "last_clock_sync": { "name": "Last clock sync" },
+      "effective_setpoint": {
+        "name": "Effective setpoint",
+        "state_attributes": {
+          "setpoint": { "name": "Setpoint", "state": { "active": "Active", "off": "Off" } }
+        }
+      },
       "operating_mode": {
         "name": "Operating mode",
         "state": { "comfort": "Comfort", "economy": "Economy", "protection": "Protection" }
@@ -230,12 +236,6 @@
           "two_pipe_heater": "2-pipe with electric heater",
           "four_pipe": "4-pipe"
         }
-      },
-      "modbus_address": { "name": "Modbus address" },
-      "baud_rate": { "name": "Baud rate" },
-      "parity": {
-        "name": "Parity",
-        "state": { "odd": "Odd", "even": "Even", "none": "None" }
       },
       "active_fault": {
         "name": "Active fault",

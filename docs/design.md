@@ -52,7 +52,7 @@ Every write is followed by an immediate refresh of both coordinators. Nothing is
 
 - **Temperatures:** raw = °C x 50 (21 °C = 1050). Setpoints are written in 0.5 °C steps.
 - **Addresses:** every register is one below the manual on the wire (measured on hardware). The code uses manual addresses and subtracts one at the I/O layer.
-- **0xFFFF** means out of service, shown as `unknown`.
+- **0xFFFF** means out of service. X1 and X2 sensors are then unavailable, with a warning in the log.
 - **OFF values:** register 1004: 4; P11 and P65: 4.5; P12 and P66: 40.5; P51: 9 (all in °C before scaling); P60: 90; P61: 360.
 - **P46** is x10 and lives at address **182**.
 - **P38 and P40 share register 38:** X1 in the high byte, X2 in the low byte. Writes are read-modify-write.
@@ -94,14 +94,14 @@ One `climate` entity covers objects 2, 3, 4, 5, 6, 7, 8, 12, 15, 16, 17 and 21.
 
 ## 3. Other entities
 
-Enabled by default unless marked *off*. "Condition" means the entity is created only in that configuration. Changing a parameter that affects conditions triggers a reload.
+Enabled by default unless marked *off*. "Condition" means the entity is created only in that configuration. Changing a parameter that affects conditions triggers a reload, which deletes entities that are no longer created. Home Assistant keeps their ID and customizations and restores them if they are created again.
 
 ### Sensors
 
 | Entity | Reg | Type | Condition |
 |---|---|---|---|
 | Room temperature | 1003 | °C | |
-| Effective setpoint | 1004 | °C | |
+| Effective setpoint | 1004 | °C | `unknown` when the setpoint in use is OFF, with attribute `setpoint: off` (otherwise `active`) |
 | Operating mode | 1001 | enum: comfort, economy, protection | |
 | Heating output | 1005 | % | Application has heating |
 | Cooling output | 1006 | % | Application has cooling |
@@ -110,7 +110,8 @@ Enabled by default unless marked *off*. "Condition" means the entity is created 
 | Fan operation | 1010 | enum: auto, manual; diagnostic | P52 != 0 |
 | Active fault | 1100-1109 | enum, raw text as attribute | |
 | Application | 109 | enum, read-only; diagnostic | |
-| Modbus address, baud rate, parity | 81, 68, 70 | read-only; diagnostic; *off* | |
+
+The Modbus address, baud rate and parity (81, 68, 70) are not entities: they only change at the wall, and a change cuts the link. They are in the device's diagnostics download, with every register as last read and the bridge host redacted.
 
 ### Binary sensors
 
@@ -131,7 +132,7 @@ Each input gets the entity matching its function in P38 or P40. The X1 registers
 |---|---|---|
 | 0 Not used | none | |
 | 1 External sensor | Sensor, "External room temperature" ("Floor temperature" if P51 is not OFF) | temperature |
-| 2 Changeover | Sensor, "Changeover temperature" (0 = closed, 100 = open if a switch is wired) | temperature |
+| 2 Changeover | Sensor, "Changeover temperature" (0 = closed, 100 = open if a switch is wired; the registers can't tell a switch from a sensor) | temperature |
 | 3 Operating mode contact | Binary sensor | opening |
 | 4 Dew point | Binary sensor | moisture |
 | 5 Heater enable | Binary sensor, on = enabled | none |
@@ -143,16 +144,14 @@ Each input gets the entity matching its function in P38 or P40. The X1 registers
 
 | Entity | Reg | Type | Condition or note |
 |---|---|---|---|
-| Key lock | 108 | select: unlocked, plus/minus, fan, mode, all | Cannot be released at the wall once set over Modbus |
 | Window open | 105 | switch | Only if neither input is function 3. **Hidden at factory settings on RDF302 and RDF302/VB** because X1 = 3. Forces Economy and blocks local operation |
 | Electric heater enable | 106 | switch | 2-pipe with electric heater, and neither input is function 5 |
 | Comfort setpoint | 103 | number 5-40 °C | Writable in any mode |
 | Outside temperature | 104 | number 0-49 °C | Shown when P07 = 2. **Cannot represent values below 0 °C**, so feed it from an automation and expect it to clamp |
-| Sync clock | 600-603 | button | Created when P07 = 3 or 4. Clock also syncs hourly, and after a failed poll recovers, in that case |
 
-### Setpoint parameters, enabled
+### Setpoints and Comfort settings, enabled
 
-These do not appear on the climate card, so they stay on by default. Category: config. They write to EEPROM, so they should not be driven by frequent automations.
+These do not appear on the climate card, so they are enabled controls (no category). They write to EEPROM, so they should not be driven by frequent automations. The heating ones are left out when nothing can heat (P01 = cooling only, no heater) and the cooling ones when P01 = heating only. The Eco ones stay with P02 = Comfort-Protection, because Eco can still be entered over the bus, by the window state or by an input contact (checked on hardware).
 
 | Entity | Reg | Range |
 |---|---|---|
@@ -160,6 +159,16 @@ These do not appear on the climate card, so they stay on by default. Category: c
 | Economy cooling setpoint (P12) | 12 | P11 up to 40, 40.5 = OFF |
 | Protection heating setpoint (P65) | 65 | 4.5 = OFF, 5 up to P66 |
 | Protection cooling setpoint (P66) | 66 | P65 up to 40, 40.5 = OFF |
+| Comfort basic setpoint (P08) | 8 | 5-40 °C. Resets the runtime Comfort setpoint |
+| Temporary Comfort setpoint (P69) | 69 | switch |
+
+### Configuration, enabled
+
+| Entity | Reg | Type | Condition or note |
+|---|---|---|---|
+| Key lock | 108 | select: unlocked, plus/minus, fan, mode, all | Cannot be released at the wall once set over Modbus |
+| Sync clock | 600-603 | button | Created when P07 = 3 or 4. Clock also syncs hourly, and after a failed poll recovers, in that case |
+| Last clock sync | - | timestamp sensor, diagnostic | With the button. Every successful sync: button, hourly or after reconnect. Kept across restarts |
 
 ### Configuration parameters, *off* by default
 
@@ -173,32 +182,30 @@ All are category config. Conditional ones follow section 3.13 of the manual.
 | 5 | P05 Sensor calibration | number | -3..3 K | |
 | 6 | P06 Standard display | select | room, setpoint, bus temperature | |
 | 7 | P07 Additional info | select | none, °C/°F, outside, 12 h, 24 h | |
-| 8 | P08 Comfort basic setpoint | number | 5-40 °C | Resets the runtime Comfort setpoint |
 | 9, 10 | P09, P10 Setpoint limits | number | 5-40 °C | |
 | 13 | P13 Heater in cooling mode | switch | | 2-pipe with electric heater |
 | 14 | P14 Local key lock | select | off, auto, manual | |
-| 30, 31 | P30, P31 Differential heat, cool | number | 0.5-6 K | |
+| 30, 31 | P30, P31 Differential heat, cool | number | 0.5-6 K | Each only if the thermostat can heat or cool |
 | 33 | P33 Dead zone | number | 0.5-5 K | |
 | 34 | P34 Setpoint differential | number | 0.5-5 K | 2-pipe with electric heater |
 | 35 | P35 Integral time | number | 0-10 min | 2-pipe 3-position |
 | 36, 37 | P36, P37 Changeover points | number | 10-25 °C; 27-40 °C | An input is function 2 |
 | 38 | P38, P40 Input functions | 2 selects | 0-8; functions 1-5 may not repeat | RDF302 and RDF302/VB |
-| 40, 41 | P39, P41 Input action | 2 selects | NO, NC | RDF302 and RDF302/VB |
+| 40, 41 | P39, P41 Input action | 2 selects | NO, NC | Each only if its input is a switch (functions 2-7); not for unused, external sensor or temperature monitor |
 | 44 | P44 Actuator run time | number | 20-300 s | 2-pipe 3-position |
 | 182 | P46 Heater load current | number | 0-5 A | 2-pipe with electric heater |
 | 48, 49 | P48, P49 Min on, off time | number | 1-20 min | |
 | 50 | P50 Purge time | number | 0-5 min | An input is function 2 |
-| 51 | P51 Floor temperature limit | number | 9 = OFF, 10-50 °C | |
+| 51 | P51 Floor temperature limit | number | 9 = OFF, 10-50 °C | Only if an input is an external sensor |
 | 52 | P52 Fan control | select | disabled, enabled, heating only, cooling only | |
-| 53 | P53 Fan speeds | select | 1-speed, 3-speed | |
-| 54 | P54 Fan overrun | number | 0-360 s | 2-pipe with electric heater |
-| 55-57 | P55-P57 Fan switching points | number | 80-100; 30-75; 1-15 % | |
+| 53 | P53 Fan speeds | select | 1-speed, 3-speed | Only if P52 enables the fan |
+| 54 | P54 Fan overrun | number | 0-360 s | 2-pipe with electric heater, fan enabled |
+| 55-57 | P55-P57 Fan switching points | number | 80-100; 30-75; 1-15 % | Only if P52 enables the fan |
 | 58 | P58 Fan start kick | switch | | |
-| 59 | P59 Fan min on time | number | 1-6 min | |
-| 60 | P60 Fan kick Comfort | number | 0-89 min, 90 = OFF | |
-| 61 | P61 Fan kick Economy | number | 0-359 min, 360 = OFF | |
+| 59 | P59 Fan min on time | number | 1-6 min | Only if P52 enables the fan |
+| 60 | P60 Fan kick Comfort | number | 0-89 min, 90 = OFF | Only if P52 enables the fan |
+| 61 | P61 Fan kick Economy | number | 0-359 min, 360 = OFF | Only if P52 enables the fan |
 | 62 | P62 Filter service interval | number | 0, 100-9900 h, step 100 | |
-| 69 | P69 Temporary Comfort setpoint | switch | | |
 | 200, 300, 400, 500 | Fault texts 1-4 | text | Up to 20 characters | |
 
 ### Deliberately not writable
@@ -213,12 +220,14 @@ All are category config. Conditional ones follow section 3.13 of the manual.
 
 ```
 Plant type (109)   -> which outputs, P13, P34, P35, P44, P46, P54 and heater enable exist
-P01                -> climate HVAC modes; whether 107 can be written
+P01                -> climate HVAC modes; whether 107 can be written;
+                      heating or cooling outputs, Eco/Protection setpoints and differentials
 P38, P40 (X1, X2)  -> which input entities exist
                    -> 3 hides Window open; 5 hides Heater enable; 2 shows the direction from 107
                       and exposes P36, P37, P50
+                   -> 2-7 expose that input's action (P39, P41); 1 exposes P51
 P51 + input 1      -> external sensor becomes floor sensor; room temperature uses built-in sensor
-P52                -> fan features and fan sensors exist
+P52                -> fan features, fan sensors and fan settings (P53-P61) exist
 P53                -> fan modes offered
 P07                -> outside temperature number; clock sync button
 P09, P10           -> climate min and max

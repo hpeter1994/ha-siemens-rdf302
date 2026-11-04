@@ -11,6 +11,7 @@ from homeassistant.components.modbus import async_get_unit
 from homeassistant.const import CONF_HOST, CONF_PORT, Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryError, HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_time_change
 from homeassistant.util import dt as dt_util
 
@@ -85,7 +86,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: Rdf302ConfigEntry) -> bo
         if device.raw(REG_P07) not in CLOCK_DISPLAY_VALUES:
             return
         try:
-            await device.async_set_clock(dt_util.now())
+            await runtime.async_sync_clock()
         except (ModbusError, OSError) as err:
             _LOGGER.debug("%s: clock sync failed: %s", entry.title, err)
 
@@ -99,11 +100,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: Rdf302ConfigEntry) -> bo
     def _async_sync_clock_on_reconnect() -> None:
         """Resync after an outage; a power cut clears the clock."""
         nonlocal was_available
-        if fast.last_update_success and not was_available:
+        reconnected = fast.last_update_success and not was_available
+        # Update first: the sync task can start at once and notify listeners.
+        was_available = fast.last_update_success
+        if reconnected:
             entry.async_create_background_task(
                 hass, _async_sync_clock(dt_util.now()), "rdf302_clock_resync"
             )
-        was_available = fast.last_update_success
 
     entry.async_on_unload(fast.async_add_listener(_async_sync_clock_on_reconnect))
 
@@ -118,7 +121,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: Rdf302ConfigEntry) -> bo
     entry.async_on_unload(fast.async_add_listener(_async_refresh_parameters_on_change))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    _async_remove_stale_entities(hass, entry)
     return True
+
+
+@callback
+def _async_remove_stale_entities(hass: HomeAssistant, entry: Rdf302ConfigEntry) -> None:
+    """Delete entities the current settings no longer create.
+
+    Setup only gets here after every setting was read, so this is not a
+    glitch. Home Assistant remembers a deleted entity's ID and customizations
+    and gives them back if a setting creates it again.
+    """
+    registry = er.async_get(hass)
+    current = entry.runtime_data.unique_ids
+    for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if entity.unique_id not in current:
+            _LOGGER.debug("%s: removing %s", entry.title, entity.entity_id)
+            registry.async_remove(entity.entity_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: Rdf302ConfigEntry) -> bool:

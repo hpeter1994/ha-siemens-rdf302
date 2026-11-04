@@ -118,3 +118,23 @@ Address, baud rate and parity changes take effect after a power cycle.
 | 8 | Temperature monitor |
 
 Functions 1–5 may only be used on one input at a time.
+
+## Undocumented addresses
+
+A read-only scan on 2026-11-04 tried every address from 0 to 4999, and every 100th address up to 65500, with function codes 1 to 4 on one RDF302. Block-only areas were probed at every tenth address with 2, 4, 8 and 10 registers.
+
+| Area | Result |
+|---|---|
+| Coils (1) and discrete inputs (2) | None answer |
+| Holding registers (3) | Only the documented ones, plus 32 and 45 |
+| Input registers (4) | The documented ones, plus 1013 and 1014 |
+| Input registers 10001 and up | A read-only copy of holding register N at 10000 + N, for every holding register that answers singly |
+| Blocks | Only the documented ones: fault texts 200–500, clock 600–603, fault 1100–1109 |
+
+Values found, and what writing to them showed. Both holding registers are independent, stored settings: changing `P44` or the differentials didn't change them, and writing them changed no other register. The thermostat stayed in Protection, so their effect on the outputs wasn't observed.
+
+| Address | Value | Accepted range | Probably |
+|---|---|---|---|
+| 32 (holding) | 100 | 25–300, the same as `P30` (0.5–6 K) | A hidden switching differential, 2 K |
+| 45 (holding) | 150 | 20–300, the same as `P44` (s) | A second actuator run time, 150 s |
+| 1013, 1014 (input) | 20 and 20 | Read only | A fixed value such as a version; the same on two thermostats with different serial settings |

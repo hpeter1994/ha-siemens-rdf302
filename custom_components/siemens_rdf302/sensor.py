@@ -2,21 +2,25 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
+import logging
 from typing import Any
 
 from homeassistant.components.sensor import (
+    RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
     SensorStateClass,
 )
 from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTemperature
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import Rdf302ConfigEntry
 from .entity import Rdf302Entity
 from .rdf302_modbus import (
+    CLOCK_DISPLAY_VALUES,
     MODE_COMFORT,
     MODE_ECONOMY,
     MODE_PROTECTION,
@@ -26,7 +30,7 @@ from .rdf302_modbus import (
     REG_HEATER_OUTPUT,
     REG_HEATING_OUTPUT,
     REG_MODE_STATE,
-    REG_P01,
+    REG_P07,
     REG_P51,
     REG_ROOM_TEMP,
     REG_X1_TEMP,
@@ -52,8 +56,8 @@ APPLICATION_OPTIONS = {
     Application.TWO_PIPE_HEATER: "two_pipe_heater",
     Application.FOUR_PIPE: "four_pipe",
 }
-BAUD_OPTIONS = {0: "4800", 1: "9600", 2: "19200", 3: "38400"}
-PARITY_OPTIONS = {0: "odd", 1: "even", 2: "none"}
+
+_LOGGER = logging.getLogger(__name__)
 
 TEMPERATURE_INPUT_KEYS = {
     InputFunction.EXTERNAL_SENSOR: "external",
@@ -67,6 +71,7 @@ class Rdf302SensorDescription(SensorEntityDescription):
     """Describe a sensor."""
 
     value_fn: Callable[[Rdf302], Any]
+    attributes_fn: Callable[[Rdf302], dict[str, Any]] | None = None
     exists_fn: Callable[[Rdf302], bool] = lambda _: True
 
 
@@ -95,12 +100,11 @@ def _enum(address: int, options: dict[int, str]) -> dict[str, Any]:
     }
 
 
-def _has_heating(device: Rdf302) -> bool:
-    return device.raw(REG_P01) != 1 or device.has_heater
-
-
-def _has_cooling(device: Rdf302) -> bool:
-    return device.raw(REG_P01) != 0
+def _setpoint_state(device: Rdf302) -> str | None:
+    """Tell an OFF setpoint apart from an unknown one, since both have no number."""
+    if (off := device.setpoint_off) is None:
+        return None
+    return "off" if off else "active"
 
 
 SENSORS: tuple[Rdf302SensorDescription, ...] = (
@@ -113,6 +117,7 @@ SENSORS: tuple[Rdf302SensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         value_fn=lambda device: device.setpoint_active,
+        attributes_fn=lambda device: {"setpoint": _setpoint_state(device)},
     ),
     Rdf302SensorDescription(
         key="operating_mode",
@@ -122,13 +127,13 @@ SENSORS: tuple[Rdf302SensorDescription, ...] = (
     Rdf302SensorDescription(
         key="heating_output",
         translation_key="heating_output",
-        exists_fn=_has_heating,
+        exists_fn=lambda device: device.can_heat,
         **_percent(REG_HEATING_OUTPUT),
     ),
     Rdf302SensorDescription(
         key="cooling_output",
         translation_key="cooling_output",
-        exists_fn=_has_cooling,
+        exists_fn=lambda device: device.can_cool,
         **_percent(REG_COOLING_OUTPUT),
     ),
     Rdf302SensorDescription(
@@ -158,27 +163,6 @@ SENSORS: tuple[Rdf302SensorDescription, ...] = (
         options=list(APPLICATION_OPTIONS.values()),
         value_fn=lambda device: APPLICATION_OPTIONS[device.application],
     ),
-    Rdf302SensorDescription(
-        key="modbus_address",
-        translation_key="modbus_address",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        value_fn=lambda device: device.raw(81),
-    ),
-    Rdf302SensorDescription(
-        key="baud_rate",
-        translation_key="baud_rate",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        **_enum(68, BAUD_OPTIONS),
-    ),
-    Rdf302SensorDescription(
-        key="parity",
-        translation_key="parity",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        **_enum(70, PARITY_OPTIONS),
-    ),
 )
 
 
@@ -195,6 +179,8 @@ async def async_setup_entry(
         if description.exists_fn(device)
     ]
     entities.append(Rdf302FaultSensor(entry))
+    if device.raw(REG_P07) in CLOCK_DISPLAY_VALUES:
+        entities.append(Rdf302LastClockSync(entry))
     for number, address in ((1, REG_X1_TEMP), (2, REG_X2_TEMP)):
         function = device.input_function(number)
         if (kind := TEMPERATURE_INPUT_KEYS.get(function)) is None:
@@ -221,6 +207,13 @@ class Rdf302Sensor(Rdf302Entity, SensorEntity):
         """Return the value."""
         return self.entity_description.value_fn(self.device)
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return extra details, if the sensor has any."""
+        if (attributes_fn := self.entity_description.attributes_fn) is None:
+            return None
+        return attributes_fn(self.device)
+
 
 class Rdf302FaultSensor(Rdf302Entity, SensorEntity):
     """The fault the thermostat reports."""
@@ -246,7 +239,11 @@ class Rdf302FaultSensor(Rdf302Entity, SensorEntity):
 
 
 class Rdf302InputSensor(Rdf302Entity, SensorEntity):
-    """A temperature on input X1 or X2."""
+    """A temperature on input X1 or X2.
+
+    The thermostat reports a missing or broken sensor as out of service, so
+    the entity is unavailable then rather than unknown.
+    """
 
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -261,9 +258,53 @@ class Rdf302InputSensor(Rdf302Entity, SensorEntity):
         self._attr_unique_id = f"{entry.entry_id}_x{number}_{kind}"
         self._attr_translation_key = f"input_{kind}"
         self._attr_translation_placeholders = {"input": f"X{number}"}
+        self._log_name = f"{entry.title} X{number}"
+        self._out_of_service = False
+
+    @property
+    def available(self) -> bool:
+        """Return False while the sensor on the input is out of service."""
+        return super().available and not self.device.out_of_service(self._address)
 
     @property
     def native_value(self) -> float | None:
         """Return the temperature."""
         return self.device.temperature(self._address)
 
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Log when the sensor goes out of service or comes back."""
+        out_of_service = self.device.out_of_service(self._address)
+        if out_of_service and not self._out_of_service:
+            _LOGGER.warning("%s: sensor out of service, check its wiring", self._log_name)
+        elif self._out_of_service and not out_of_service:
+            _LOGGER.info("%s: sensor back in service", self._log_name)
+        self._out_of_service = out_of_service
+        super()._handle_coordinator_update()
+
+
+class Rdf302LastClockSync(Rdf302Entity, RestoreSensor):
+    """When the clock was last set, by the button, hourly or after a reconnect."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "last_clock_sync"
+
+    def __init__(self, entry: Rdf302ConfigEntry) -> None:
+        """Initialize the entity."""
+        super().__init__(entry)
+        self._attr_unique_id = f"{entry.entry_id}_last_clock_sync"
+
+    async def async_added_to_hass(self) -> None:
+        """Keep the last sync across restarts and reloads."""
+        await super().async_added_to_hass()
+        if self.runtime.last_clock_sync is None and (
+            data := await self.async_get_last_sensor_data()
+        ):
+            if isinstance(data.native_value, datetime):
+                self.runtime.last_clock_sync = data.native_value
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the time of the last successful sync."""
+        return self.runtime.last_clock_sync

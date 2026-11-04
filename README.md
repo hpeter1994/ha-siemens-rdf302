@@ -12,9 +12,10 @@ Not affiliated with or endorsed by Siemens. Siemens and RDF302 are names of thei
 - **Climate entity:** temperature, target, HVAC mode, Comfort and Eco presets, fan mode and current action
 - **Sensors:** room temperature, effective setpoint, operating mode, outputs, active fault and problem state
 - **Controls:** key lock, window state, electric heater enable, Comfort setpoint and outside temperature
-- **Clock sync:** automatic each hour and after the thermostat reconnects, plus a button, when the display is set to show the time
+- **Clock sync:** automatic each hour and after the thermostat reconnects, plus a button and a sensor showing the last sync, when the display is set to show the time
 - **X1 and X2 inputs:** entities that match each input's configured function
 - **Eco and Protection setpoints,** plus about 40 expert parameters that are disabled by default
+- **Diagnostics download:** Modbus address, baud rate, parity and every register, from the device page
 - **Entities that follow your setup:** only what your application and settings use is created, and the integration reloads itself when those settings change
 
 See [docs/design.md](docs/design.md) for every entity and how they depend on each other.
@@ -66,8 +67,10 @@ Add one entry per thermostat. Thermostats on the same bridge share its connectio
 - **Not writable on purpose:** application type, factory reset, address, baud rate and parity. Change them at the thermostat, because a wrong value can take it off the bus.
 - **Outside temperature** only displays 0–49 °C, so it can't show frost. Update it with your own automation. The display's extra line shows either the outside temperature or the time, not both.
 - **A power cut clears the clock.** The integration writes it again once the thermostat answers, and every hour.
+- **Effective setpoint with no number:** when the setpoint in use is set to OFF (for example the Protection cooling setpoint), the sensor shows `unknown` and its `setpoint` attribute is `off`. Home Assistant doesn't allow text on a temperature sensor.
+- **X1 and X2 temperatures** become unavailable when the thermostat reports their sensor out of service (missing or broken), and a warning is logged. If a changeover switch is wired instead of a sensor, the changeover temperature reads 0 °C when closed and 100 °C when open.
 - **Only the highest-priority fault is reported** by the thermostat, so there's one fault sensor and not one per fault.
-- **Removed entities:** if a setting removes an entity, the old one stays listed as unavailable until you delete it.
+- **Entities follow the settings:** if a setting makes an entity irrelevant, it's deleted when the integration reloads. If the setting is changed back, Home Assistant recreates it with the same entity ID, name, area and other customizations.
 
 ## Tested hardware
 

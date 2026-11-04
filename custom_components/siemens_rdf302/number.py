@@ -99,13 +99,33 @@ def _setpoint_pair(
         key=key,
         translation_key=key,
         address=address,
-        entity_category=EntityCategory.CONFIG,
+        exists_fn=_can_heat if low else _can_cool,
         native_min_value=off if low else 5,
         native_max_value=40 if low else off,
         max_fn=_on_setpoint(other) if low else None,
         min_fn=None if low else _on_setpoint(other),
         **_temp_kwargs(),
     )
+
+
+def _can_heat(device: Rdf302) -> bool:
+    return device.can_heat
+
+
+def _can_cool(device: Rdf302) -> bool:
+    return device.can_cool
+
+
+def _fan(device: Rdf302) -> bool:
+    return device.has_fan
+
+
+def _heater_and_fan(device: Rdf302) -> bool:
+    return device.has_heater and device.has_fan
+
+
+def _external_sensor(device: Rdf302) -> bool:
+    return device.has_input_function(InputFunction.EXTERNAL_SENSOR)
 
 
 def _heater(device: Rdf302) -> bool:
@@ -143,11 +163,18 @@ NUMBERS: tuple[Rdf302NumberDescription, ...] = (
     _setpoint_pair("protection_heating_setpoint", REG_P65, 4.5, True, REG_P66),
     _setpoint_pair("protection_cooling_setpoint", REG_P66, 40.5, False, REG_P65),
     _config("sensor_calibration", REG_P05, native_min_value=-3, native_max_value=3, **_kelvin_kwargs()),
-    _config("comfort_basic_setpoint", 8, native_min_value=5, native_max_value=40, **_temp_kwargs()),
+    Rdf302NumberDescription(
+        key="comfort_basic_setpoint",
+        translation_key="comfort_basic_setpoint",
+        address=8,
+        native_min_value=5,
+        native_max_value=40,
+        **_temp_kwargs(),
+    ),
     _config("setpoint_minimum", REG_P09, native_min_value=5, native_max_value=40, **_temp_kwargs()),
     _config("setpoint_maximum", REG_P10, native_min_value=5, native_max_value=40, **_temp_kwargs()),
-    _config("differential_heating", 30, native_min_value=0.5, native_max_value=6, **_kelvin_kwargs()),
-    _config("differential_cooling", 31, native_min_value=0.5, native_max_value=6, **_kelvin_kwargs()),
+    _config("differential_heating", 30, native_min_value=0.5, native_max_value=6, **_kelvin_kwargs(), exists_fn=_can_heat),
+    _config("differential_cooling", 31, native_min_value=0.5, native_max_value=6, **_kelvin_kwargs(), exists_fn=_can_cool),
     _config("dead_zone", 33, native_min_value=0.5, native_max_value=5, **_kelvin_kwargs()),
     _config("setpoint_differential", 34, native_min_value=0.5, native_max_value=5, exists_fn=_heater, **_kelvin_kwargs()),
     _config("integral_time", 35, native_min_value=0, native_max_value=10, native_step=1, native_unit_of_measurement=UnitOfTime.MINUTES, exists_fn=_three_position),
@@ -158,14 +185,14 @@ NUMBERS: tuple[Rdf302NumberDescription, ...] = (
     _config("minimum_on_time", 48, native_min_value=1, native_max_value=20, native_step=1, native_unit_of_measurement=UnitOfTime.MINUTES),
     _config("minimum_off_time", 49, native_min_value=1, native_max_value=20, native_step=1, native_unit_of_measurement=UnitOfTime.MINUTES),
     _config("purge_time", 50, native_min_value=0, native_max_value=5, native_step=1, native_unit_of_measurement=UnitOfTime.MINUTES, exists_fn=_changeover_input),
-    _config("floor_temperature_limit", REG_P51, native_min_value=9, native_max_value=50, native_step=1, device_class=NumberDeviceClass.TEMPERATURE, native_unit_of_measurement=UnitOfTemperature.CELSIUS, scale=TEMP_SCALE),
-    _config("fan_overrun", 54, native_min_value=0, native_max_value=360, native_step=1, native_unit_of_measurement=UnitOfTime.SECONDS, exists_fn=_heater),
-    _config("fan_point_high", 55, native_min_value=80, native_max_value=100, native_step=1, native_unit_of_measurement=PERCENTAGE),
-    _config("fan_point_medium", 56, native_min_value=30, native_max_value=75, native_step=1, native_unit_of_measurement=PERCENTAGE),
-    _config("fan_point_low", 57, native_min_value=1, native_max_value=15, native_step=1, native_unit_of_measurement=PERCENTAGE),
-    _config("fan_minimum_on_time", 59, native_min_value=1, native_max_value=6, native_step=1, native_unit_of_measurement=UnitOfTime.MINUTES),
-    _config("fan_kick_comfort", 60, native_min_value=0, native_max_value=90, native_step=1, native_unit_of_measurement=UnitOfTime.MINUTES),
-    _config("fan_kick_economy", 61, native_min_value=0, native_max_value=360, native_step=1, native_unit_of_measurement=UnitOfTime.MINUTES),
+    _config("floor_temperature_limit", REG_P51, native_min_value=9, native_max_value=50, native_step=1, device_class=NumberDeviceClass.TEMPERATURE, native_unit_of_measurement=UnitOfTemperature.CELSIUS, scale=TEMP_SCALE, exists_fn=_external_sensor),
+    _config("fan_overrun", 54, native_min_value=0, native_max_value=360, native_step=1, native_unit_of_measurement=UnitOfTime.SECONDS, exists_fn=_heater_and_fan),
+    _config("fan_point_high", 55, native_min_value=80, native_max_value=100, native_step=1, native_unit_of_measurement=PERCENTAGE, exists_fn=_fan),
+    _config("fan_point_medium", 56, native_min_value=30, native_max_value=75, native_step=1, native_unit_of_measurement=PERCENTAGE, exists_fn=_fan),
+    _config("fan_point_low", 57, native_min_value=1, native_max_value=15, native_step=1, native_unit_of_measurement=PERCENTAGE, exists_fn=_fan),
+    _config("fan_minimum_on_time", 59, native_min_value=1, native_max_value=6, native_step=1, native_unit_of_measurement=UnitOfTime.MINUTES, exists_fn=_fan),
+    _config("fan_kick_comfort", 60, native_min_value=0, native_max_value=90, native_step=1, native_unit_of_measurement=UnitOfTime.MINUTES, exists_fn=_fan),
+    _config("fan_kick_economy", 61, native_min_value=0, native_max_value=360, native_step=1, native_unit_of_measurement=UnitOfTime.MINUTES, exists_fn=_fan),
     _config("filter_service_interval", 62, native_min_value=0, native_max_value=9900, native_step=100, native_unit_of_measurement=UnitOfTime.HOURS),
 )
 

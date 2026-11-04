@@ -1,7 +1,11 @@
 """Base entity for the Siemens RDF302 integration."""
 
+import asyncio
+
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityDescription
+from homeassistant.helpers.entity_platform import EntityPlatform
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, MANUFACTURER
@@ -41,6 +45,17 @@ class Rdf302Entity(CoordinatorEntity[Rdf302Coordinator]):
             model=MODEL_NAMES[runtime.device.model],
             name=entry.title,
         )
+
+    def add_to_platform_start(
+        self,
+        hass: HomeAssistant,
+        platform: EntityPlatform,
+        parallel_updates: asyncio.Semaphore | None,
+    ) -> None:
+        """Note the entity as current, including when it is disabled."""
+        super().add_to_platform_start(hass, platform, parallel_updates)
+        if self.unique_id is not None:
+            self.runtime.unique_ids.add(self.unique_id)
 
     async def async_added_to_hass(self) -> None:
         """Also follow the slow group."""

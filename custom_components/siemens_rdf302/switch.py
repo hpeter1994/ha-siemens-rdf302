@@ -63,8 +63,6 @@ SWITCHES: tuple[Rdf302SwitchDescription, ...] = (
         key="temporary_comfort_setpoint",
         translation_key="temporary_comfort_setpoint",
         address=69,
-        entity_category=EntityCategory.CONFIG,
-        entity_registry_enabled_default=False,
     ),
 )
 

@@ -17,8 +17,9 @@ from pytest_homeassistant_custom_component.common import (
 from custom_components.siemens_rdf302 import create_modbus_params
 from custom_components.siemens_rdf302.const import FAST_SCAN_INTERVAL
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.const import CONF_HOST, CONF_PORT, STATE_UNAVAILABLE
+from homeassistant.const import CONF_HOST, CONF_PORT, STATE_UNAVAILABLE, EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
 from .conftest import setup_entry
@@ -190,3 +191,76 @@ async def test_parameters_reread_after_runtime_write(
         blocking=True,
     )
     assert entry.runtime_data.device.raw(11) == 12 * 50
+
+
+@pytest.mark.usefixtures("mock_link")
+async def test_stale_entities_removed_and_restored(
+    hass: HomeAssistant,
+    entry: MockConfigEntry,
+    unit: MockModbusUnit,
+    entity_registry: er.EntityRegistry,
+) -> None:
+    """Entities a setting no longer creates are deleted, and come back as they were."""
+    unit.holding[7] = 2
+    await setup_entry(hass, entry)
+    entity_id = "number.rdf302_outside_temperature"
+    entity_registry.async_update_entity(entity_id, name="Outdoor")
+    # Disabled entities are current too, so they must survive.
+    assert entity_registry.async_get("number.rdf302_dead_zone") is not None
+
+    unit.holding[7] = 0
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entity_registry.async_get(entity_id) is None
+    assert hass.states.get(entity_id) is None
+    assert entity_registry.async_get("number.rdf302_dead_zone") is not None
+
+    unit.holding[7] = 2
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entity_registry.async_get(entity_id).name == "Outdoor"
+
+
+@pytest.mark.usefixtures("mock_link")
+async def test_last_clock_sync_shows_every_sync(
+    hass: HomeAssistant, entry: MockConfigEntry, unit: MockModbusUnit
+) -> None:
+    """The sensor records automatic syncs as well as button presses."""
+    unit.holding[7] = 4
+    await setup_entry(hass, entry)
+    entity_id = "sensor.rdf302_last_clock_sync"
+    assert hass.states.get(entity_id).state == "unknown"
+
+    top_of_hour = dt_util.utcnow().replace(minute=0, second=5, microsecond=0)
+    async_fire_time_changed(hass, top_of_hour.replace(hour=(top_of_hour.hour + 1) % 24))
+    await hass.async_block_till_done()
+    assert hass.states.get(entity_id).state != "unknown"
+
+    entry.runtime_data.last_clock_sync = None
+    await hass.services.async_call(
+        "button", "press", {"entity_id": "button.rdf302_sync_clock"}, blocking=True
+    )
+    assert hass.states.get(entity_id).state != "unknown"
+
+
+@pytest.mark.usefixtures("mock_link")
+async def test_entity_categories(
+    hass: HomeAssistant,
+    entry: MockConfigEntry,
+    unit: MockModbusUnit,
+    entity_registry: er.EntityRegistry,
+) -> None:
+    """Key lock and clock sync are configuration; the setpoints are controls."""
+    unit.holding[7] = 4
+    await setup_entry(hass, entry)
+    for entity_id in ("select.rdf302_key_lock", "button.rdf302_sync_clock"):
+        assert entity_registry.async_get(entity_id).entity_category is EntityCategory.CONFIG
+    for entity_id in (
+        "number.rdf302_economy_heating_setpoint_4_5_off",
+        "number.rdf302_protection_cooling_setpoint_40_5_off",
+        "number.rdf302_comfort_basic_setpoint",
+        "switch.rdf302_temporary_comfort_setpoint",
+    ):
+        entry_ = entity_registry.async_get(entity_id)
+        assert entry_.entity_category is None
+        assert entry_.disabled_by is None
